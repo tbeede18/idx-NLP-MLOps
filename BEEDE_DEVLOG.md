@@ -75,6 +75,8 @@ Successfully executed an end-to-end, fully automated ETL run. The script generat
 
 * Sync with the team to hand off the populated Bronze bucket. The ML engineers can now connect their TFX validation scripts to this cloud bucket to begin cleaning the data and building out the Silver layer.
 
+-----------------------------------------------------------------------------------------------------------------------------------------
+
 ## June 28, 2026 - Week 2
 
 ### Goal: Automate the 5-minute data ingestion pipeline using serverless cloud infrastructure.
@@ -113,3 +115,87 @@ The pipeline is now officially fully autonomous. The Lambda function successfull
 * Begin the historical "Catch-Up" backfill to bridge the data gap between the original historical dataset and the start of live ingestion.
 
 * Coordinate with the ML team to begin the Bronze-to-Silver ETL job using AWS Glue to deduplicate the incoming streams.
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+## July 2, 2026 - Week 2
+
+### Goal: Establish cloud cost governance, role-based access controls, and automated budget enforcement for team infrastructure.
+
+### What I did today:
+* **Architected Cost-Tracking Guardrails:** Formulate a strict resource-tagging protocol to map infrastructure spend directly to specific teams and presented this structure to my boss (e.g., `Key: Group` | `Value: TestGroupNum`). Provisions were made to anchor all pipeline assets to a single region (`us-west-1`) to eliminate cross-region data transfer fees.
+
+* **Configured Automated Budget Fail-Safes:**
+    * Navigated the AWS Budgets console to construct a project-specific cost tracking model with a hard enforcement threshold.
+    * Engineered a real-time **Budget Action** to attach a restrictive `ReadOnlyAccess` IAM policy to the target user group the exact millisecond a financial threshold is breached, completely freezing unauthorized resource provisioning.
+
+* **Delegated Cloud Administration:** Structured a shared administration workflow enabling designated platforms admins/coaches to independently manage IAM onboarding, cost allocation tag activation, and budget overrides without relying on root account credentials.
+
+### Challenges & Debugging:
+* **Obstacle 1:** Attempting to access the **Cost Allocation Tags** page resulted in an immediate "Access Denied: IAM user access not activated" error, despite operating with administrative permissions.
+
+* **Solution 1:** Identified that AWS inherently locks the financial vault from all non-root users. Resolved by executing a one-time root account configuration update to check the box for **Activate IAM Access** under the account's Billing preferences, unlocking the dashboard for the administrative team.
+
+* **Obstacle 2:** Newly applied user-defined tags on S3 resource layers failed to populate immediately within the AWS Budgets dropdown menu.
+
+* **Solution 2:** Recognized the underlying architectural delay of the AWS billing console; the system requires a 24-hour cycle to run a global resource sweep and ingest active metadata tags. Left the tagged infrastructure static to allow the automated daily system sweep to register the keys.
+
+* **Obstacle 3:** The AWS Budgets automated action engine could not be executed due to missing role identity permissions in the dropdown menu.
+
+* **Solution 3:** Discovered that the budget automation engine operates as an independent "robot" requiring explicit service-linked permissions. Formulated a standalone IAM service role (`Budget-Actions-Role`) utilizing the managed policy `AWSBudgetsActions_RolePolicyForResourceAdministrationWithSSM` to grant the budget engine the authority to pass and apply "Deny" rules mid-month.
+
+### The Win:
+The cloud infrastructure is now completely insulated from runaway spend. A robust, multi-tenant administrative structure is in place, and if an engineer accidentally leaves a heavy, unapproved data science resource running over a weekend, the automated budget robot will instantly drop their access to Read-Only before any catastrophic credit burning can occur.
+
+### Next Steps:
+* Log back into the AWS console after the 24-hour data sweep to verify that the `Group` tag key has populated and is ready for activation.
+* Finalize mapping the team groups and hand off the Day 1 deployment instructions to the platform users.
+* Shift focus to the data engineering layer to map out the AWS Glue ETL workflow for turning the raw Bronze JSON strings into clean relational tables.
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+## July 6, 2026 - Week 2
+
+### Goal: Establish cloud cost governance, role-based access controls, and automated budget enforcement for team infrastructure.
+
+### What I did today:
+* **Architected Cost-Tracking Guardrails:** Formulate a strict resource-tagging protocol to map infrastructure spend directly to specific teams and presented this structure to my boss (e.g., `Key: Group` | `Value: TestGroupNum`). Provisions were made to anchor all pipeline assets to a single region (`us-west-1`) to eliminate cross-region data transfer fees.
+
+* **Configured Automated Budget Fail-Safes:**
+    * Navigated the AWS Budgets console to construct a project-specific cost tracking model with a hard enforcement threshold.
+    * Engineered a real-time **Budget Action** to attach a restrictive `ReadOnlyAccess` IAM policy to the target user group the exact millisecond a financial threshold is breached, completely freezing unauthorized resource provisioning.
+
+* **Delegated Cloud Administration:** Structured a shared administration workflow enabling designated platforms admins/coaches to independently manage IAM onboarding, cost allocation tag activation, and budget overrides without relying on root account credentials.
+
+* **Engineered Silver-Layer Data Pipeline:** Successfully implemented a robust ETL workflow using AWS Glue/Spark to process raw Trestle API JSON data.
+    * Configured Spark to handle multi-line, nested API structures with `multiLine` and `PERMISSIVE` modes.
+    * Implemented structural flattening of API `value` arrays using `explode`.
+    * Standardized data quality by casting raw string fields to appropriate `DoubleType` and `IntegerType` formats to enable math and filtering.
+    * Integrated automated deduplication logic using `dropDuplicates(["ListingId"])` to ensure data integrity.
+    * Optimized storage by partitioning output data by `year`, `month`, and `day` and writing to S3 in Parquet format with a specific path-overwrite strategy.
+
+### Challenges & Debugging:
+* **Obstacle 1:** Attempting to access the **Cost Allocation Tags** page resulted in an immediate "Access Denied: IAM user access not activated" error, despite operating with administrative permissions.
+
+* **Solution 1:** Identified that AWS inherently locks the financial vault from all non-root users. Resolved by executing a one-time root account configuration update to check the box for **Activate IAM Access** under the account's Billing preferences, unlocking the dashboard for the administrative team.
+
+* **Obstacle 2:** Newly applied user-defined tags on S3 resource layers failed to populate immediately within the AWS Budgets dropdown menu.
+
+* **Solution 2:** Recognized the underlying architectural delay of the AWS billing console; the system requires a 24-hour cycle to run a global resource sweep and ingest active metadata tags. Left the tagged infrastructure static to allow the automated daily system sweep to register the keys.
+
+* **Obstacle 3:** The AWS Budgets automated action engine could not be executed due to missing role identity permissions in the dropdown menu.
+
+* **Solution 3:** Discovered that the budget automation engine operates as an independent "robot" requiring explicit service-linked permissions. Formulated a standalone IAM service role (`Budget-Actions-Role`) utilizing the managed policy `AWSBudgetsActions_RolePolicyForResourceAdministrationWithSSM` to grant the budget engine the authority to pass and apply "Deny" rules mid-month.
+
+* **Obstacle 4:** Spark JSON parsing resulted in a `_corrupt_record` error due to API multi-line responses. **Solution:** Enabled `multiLine("true")` and `PERMISSIVE` mode.
+* **Obstacle 5:** Quantile calculations failed due to `StringType` casting and empty DataFrame/null issues. **Solution:** Implemented explicit `DoubleType` casting for prices and area fields, and added validation checks for row counts before running statistical operations.
+* **Obstacle 6:** `mode("overwrite")` with `partitionBy` triggered "empty string" path errors. **Solution:** Switched to explicit path-based overwrites for specific partitions.
+
+### The Win:
+The cloud infrastructure is now completely insulated from runaway spend. Additionally, the data engineering pipeline is functional; raw, nested API responses are now being cleaned, deduplicated, and stored as optimized, partitioned Parquet files, creating a reliable foundation for downstream machine learning tasks.
+
+### Next Steps:
+* Log back into the AWS console after the 24-hour data sweep to verify that the `Group` tag key has populated and is ready for activation.
+* Finalize mapping the team groups and hand off the Day 1 deployment instructions to the platform users.
+* Perform a full historical backfill of all remaining data in the Bronze S3 bucket to populate the entire Silver data lake.
+* Begin initial feature engineering on the cleaned Parquet data for the NFL/Real Estate prediction models.
